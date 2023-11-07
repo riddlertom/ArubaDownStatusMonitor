@@ -1,0 +1,12 @@
+{
+  "AirwaveIP": "",
+  "ReportsDirectory": "",
+  "ReportRetentionDays": 365,
+  "ControllerUser": "apanzarella",
+  "ControllerisForce": false,
+  "AirwaveisForce": false,
+  "ControllerPass": "",
+  "AirwavePass": "",
+  "AirwaveUser": "",
+  "ControllerIP": ""
+}
