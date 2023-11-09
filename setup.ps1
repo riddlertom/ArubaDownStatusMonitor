@@ -24,5 +24,9 @@ $conn =@{
 Connect-PSUServer @conn 
  
 
+
 #Get-PSUApp
+#New-PSUApp -Name "ArubaDownStatusMonitor" -FilePath "dashboards\ArubaDownStatusMonitor\ArubaDownStatusMonitor.ps1" -BaseUrl "/ArubaMonitor" -Authenticated -AutoDeploy
+#>> dir\dashboards.ps1
+
 
