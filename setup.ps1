@@ -1,4 +1,7 @@
 #Requires -RunAsAdministrator 
+#Requires -Version 7
+
+#todo does not support windows 5.1 powerhsell
 
 #helper script to setup web tooling
 
@@ -7,6 +10,8 @@ $thisPath = $PSScriptRoot
 $dashpath = "$thisPath\ArubaDownStatusMonitor"
 if (!(dir -ea 0 -LiteralPath "$thisPath\ArubaDownStatusMonitor")) { Write-Error "Couldn't find dashboard files at dir: $dashpath"; pause; return; exit; }
 
+
+#todo: mac check instuction needed?
 
 # region: setup universal if needed
 
@@ -31,8 +36,8 @@ if (!(dir -ea 0 -LiteralPath "$thisPath\ArubaDownStatusMonitor")) { Write-Error 
         }
 
         $module_universal2 = Get-Module -ListAvailable -name universal
-        $installedVersionNotOK2 = $module_universal.Version -lt $buildVer
-        if ( !$module_universal2 -or $installedVersionNotOK2) { Write-Error "Something went wrong during setup of Powershell Universal"; pause; return; exit }
+        $installedVersionNotOK2 = $module_universal2.version -lt $buildVer
+        if ( !$module_universal2 -or $installedVersionNotOK2) { Write-Error "[Check2] Something went wrong during setup of Powershell Universal"; pause; return; exit }
     }else{
         write-host "Valid Powershell Universal Module Found with Version: $($module_universal.Version)"
     }
@@ -43,7 +48,7 @@ if (!(dir -ea 0 -LiteralPath "$thisPath\ArubaDownStatusMonitor")) { Write-Error 
 
     #find paths
     $service = get-service -Name PowerShellUniversal
-    if ( !$service -or !$service.BinaryPathName) { Write-Error "Something went wrong during setup of Powershell Universal"; pause; return; exit }
+    if ( !$service -or !$service.BinaryPathName) { Write-Error "Missing Powershell Universal service info"; pause; return; exit }
     $match = [regex]::Match($service.BinaryPathName,'^.*PowerShellUniversal')
     if(!$match){}
 
@@ -53,7 +58,8 @@ if (!(dir -ea 0 -LiteralPath "$thisPath\ArubaDownStatusMonitor")) { Write-Error 
     if(!(test-path $dashboardPath -ea 0)){Write-Error "Unable to find path to Powershell Universal dashboard directory at: $dashboardPath"; pause; return; exit;}
 
     $dashboardsFile = "$baseProgramsPath\UniversalAutomation\Repository\dashboards.ps1"
-    if(!(test-path $dashboardsFile -ea 0)){Write-Error "Unable to find expected file: $dashboardPath"; pause; return; exit;}
+    if(!(test-path $dashboardsFile -ea 0)){'' > $dashboardsFile}
+    #Write-Error "Unable to find expected file at: $dashboardPath"; pause; return; exit;}
 
     #---------------------------
 
@@ -67,6 +73,6 @@ if (!(dir -ea 0 -LiteralPath "$thisPath\ArubaDownStatusMonitor")) { Write-Error 
     
     if(!$dashInstalled){restart-service -Name PowerShellUniversal -Verbose }
 
-    Write-Host "Setup finished"
+    Write-Host "Setup finished: navigate to http://localhost:5000/ArubaMonitor"
 
 #endregion
