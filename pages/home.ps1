@@ -1,53 +1,32 @@
 ﻿New-UDPage -Url "/home" -Name "home" -Content {
 $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
+    Function saveToDb {
+        param(
+            $recordType
+        )
+    
+        $saveRows0 = (iex "`$page:$recordType") # | select -ExcludeProperty rendered*")
 
-    Function priv_makeOverallRows {
-
-
-        $ControllerAPStatus = getControllerAPStatus -currentArubaID $cache:dashinfo.$DashboardName.currentArubaID -arubaIP $cache:dashinfo.$DashboardName.settingsObj.ControllerIP 
-        $APDownDataExpanded = getAirwaveDownAPs -currentArubaID $cache:dashinfo.$DashboardName.currentArubaID -AirwaveIP $cache:dashinfo.$DashboardName.settingsObj.AirwaveIP 
-    
-    
-    
-        $targets = @()
-        ForEach ($obj in $APDownDataExpanded | select-object Name, "IP Address", status ) {
-    
-            $target0 = $DailyDownReport | ? { $_.Device -eq $obj.Name -and $_.folder -notlike "*Controllers*" }
-    
-            if ($target0) {
-                $targets += $obj
-            }
+        $now = $saveRows0 | select -first 1 -ExpandProperty RenderedOriginTimeStamp
+        if(!$now){
+            write-error "missing timestamp on record(s). Defaulting to saving csv file to today"
+            $now = get-date
         }
-    
-        $targets | add-member -MemberType NoteProperty -name "PingReply" -value $null -force
-        $targets | add-member -MemberType NoteProperty -name "DateTested" -value $null -force
-        $targets | add-member -MemberType NoteProperty -name "ActualStatus" -value $null -force
-        $targets | add-member -memberType NoteProperty -name "Recomendations" -value $null -force
-    
-    
-        foreach ($obj in $targets) {
-            $obj.datetested = Get-Date
-            $obj.PingReply = Test-NetConnection -computername $obj.'ip address' | Select-Object -ExpandProperty PingSucceeded
-            $obj.ActualStatus = if ($obj.PingReply -eq "True" -and $obj.Status -like "UP*") {
-                "Up"
-            }
-            else {
-                "Down"
-            }
-            $obj.Recomendations = if ($obj.PingReply -eq "True" -and $obj.Status -like "UP*") {
-                "None"
-            }
-            else {
-                "Reset Switch Port"
-            }
-    
-    
+   
+
+        if (!$cache:dashinfo.$DashboardName.HistoricalDB.days.$($now.date).Keys) { $cache:dashinfo.$DashboardName.HistoricalDB.days.$($now.date) = @{} }
+        if (!$cache:dashinfo.$DashboardName.HistoricalDB.days.$($now.date).$recordType.Keys) { $cache:dashinfo.$DashboardName.HistoricalDB.days.$($now.date).$recordType = @{} }
+
+        $saveRows = $saveRows0 | select -ExcludeProperty rendered*
+        $cache:dashinfo.$DashboardName.HistoricalDB.days.$($now.date).$recordType.$now = $saveRows
+
+        try {
+
+            $destPath = newRecordPath -Dirpath $cache:dashinfo.$DashboardName.settingsObj.ReportsDirectory -FileNameEnd "$recordType.csv" -datetime $now
+            $saveRows | Export-Csv -LiteralPath $destPath 
+            Show-UDToast -Message "Saved to: $destpath" -Duration 4000
         }
-    
-        
-        #$targets | export-csv -path .\ArubaDailyDown$(get-date -f yyyy-MM-dd).csv
-    
-        $targets
+        catch { write-error $_ }
     }
     
     Function emitDaysRecordsGrid {
@@ -58,37 +37,76 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
             [parameter()]
             [ValidateSet('airwaveReport', 'OverallState', 'ArubaControllerAPDatabase')]
             [string]
-            $recordType
+            $recordType,
+
+            #optionally provide rows when not pulling from the historical db (e.g. generating overallState or scraping Apis today)
+            $allrows
         )
 
-        $allrows = $cache:dashinfo.$DashboardName.HistoricalDB.days.$($session:selectedDay.day).$recordType.$($session:selectedDay.$recordType)
-    
-        [array]$rowHeadersF = New-UDDataGridColumn -Flex 1.0 -Field 'Selector' -Render {
-
-            $session:temp = $EventData
-            New-UDCheckBox  -OnChange {
-                Show-UDToast -Duration 4000 -Message "selected : $($session:temp)"
-            }
+        if (!$allrows) {
+            $allrows = $cache:dashinfo.$DashboardName.HistoricalDB.days.$($session:selectedDay.day).$recordType.$($session:selectedDay.$recordType)
+            $isnewRecords = $true
         }
 
-        $allrows[0].psobject.properties.name | % { [array]$rowHeadersF += @{ field = $_; editable = $true ; Flex = 1.0 } }
-        
-        
-        $setvar1 = '$page:{0} = $allrows;$page:{0}Length={1}' -f $recordType, $allrows.Length
-        iex $setvar1
 
+
+
+        [array]$rowHeadersF = @()
+
+        [array]$propNames = $allrows[0].psobject.properties.name
+
+        if ($propNames -notcontains 'RenderedinternalGuid') {
+            $allrows | % { add-member -InputObject $_ -MemberType NoteProperty -name "RenderedinternalGuid" -value (new-guid) -force }
+        }
+
+        if ($isnewRecords) {
+            
+            $allrows | % { add-member -InputObject $_ -MemberType NoteProperty -name "RenderedOriginTimeStamp" -value $session:selectedDay.$recordType -force }
+        }else{
+            $allrows | % { add-member -InputObject $_ -MemberType NoteProperty -name "RenderedOriginTimeStamp" -value (get-date) -force }
+        }
+
+
+
+        $propNames | % {             
+            if ($_ -like "Rendered*") { continue }
+            [array]$rowHeadersF += @{ field = $_; editable = $true ; Flex = 1.0 } 
+        }
+
+
+        
+        
         $rowSBTemplate = '$Page:{0} | Out-UDDataGridData -TotalRows $Page:{0}.Length -Context $EventData' #$page:{0}Length
         $str = $rowSBTemplate -f $recordType #, $allrows.Length
         $LoadRowsSB = [scriptblock]::Create($str)
 
 
-        #debug 
-        if (!$cache:debugit.keys) { $cache:debugit = @{} }
-        $cache:debugit.$recordType = @{LoadRowsSB = $LoadRowsSB; setvar1 = $setvar1; }
+        $OnEdit0 = '
 
-        $OnEdit = { Show-UDToast "Editing $Body" }
-        New-UDDataGrid -id "$recordType.prop" -Columns $rowHeadersF -LoadRows $LoadRowsSB -ShowPagination -PageSize 10 -OnEdit $OnEdit -RowsPerPageOptions @(10, 25, 50, 100, 200, 1000)
+            $newrow = $EventData.newRow
+            $RenderedinternalGuid = $newRow.RenderedinternalGuid
+
+            $i = 0
+            $rowint = $null
+            foreach ($row in $page:{0}) {
+                                
+                if ($row.RenderedinternalGuid -eq $RenderedinternalGuid) { 
+                    $rowInt = $i; 
+                    break
+                }
+                $i++
+            }
+            if ($rowint -ne $null) { $page:{0}[$rowint] = $newrow }
+        ' -replace '\{0\}', $recordType
+        $OnEditSB = [scriptblock]::Create($OnEdit0)
         
+
+        #build/eval dynamic vars
+        $setvar1 = '$page:{0} = $allrows; $page:{0}Headers = $rowHeadersF; $page:{0}LoadRowsSB = $LoadRowsSB; $page:{0}onEditSB = $OnEditSB' -f $recordType
+        iex $setvar1
+        
+
+        New-UDDataGrid -id "$recordType.prop" -ShowQuickFilter -Columns (iex "`$page:$($recordType)Headers") -LoadRows (iex "`$page:$($recordType)LoadRowsSB") -ShowPagination -PageSize 10 -OnEdit  (iex "`$page:$($recordType)onEditSB") -RowsPerPageOptions @(10, 25, 50, 100, 200, 1000)
     }
 
     Function makeHistoricalDbGrid {
@@ -131,7 +149,7 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
                 New-UDButton -Text "Load" -OnClick { 
     
                     $session:selectedDay = $session:Historicalprop 
-                    $cache:selectedDay = $session:selectedDay
+#                   $cache:selectedDay = $session:selectedDay
     
                     #sync-udelement
                     Show-UDToast -Duration 4000 -Message "Loaded day: $($session:Historicalprop.day)"
@@ -163,9 +181,9 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
     
             $dailyrecord = @{
             
-                OverallStates    = [ordered]@{};        
-                ControllerStates = [ordered]@{};        
-                AirwaveStates    = [ordered]@{};
+                OverallState    = @{};        
+                ArubaControllerAPDatabase = @{};        
+                airwaveReport    = @{};
             }
             
             $dailyrecord
@@ -197,7 +215,7 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
     
             $info = getRecordInfoFromFullPath -FullfilePath $csvfile
             
-            if (!$HistoricalDBObj.days.$($info.dateObj.Date) ) { $HistoricalDBObj.days.$($info.dateObj.Date) = @{} }
+            if (!$HistoricalDBObj.days.$($info.dateObj.Date) ) { $HistoricalDBObj.days.$($info.dateObj.Date) = priv_newDailyRecord }
             if (!$HistoricalDBObj.days.$($info.dateObj.Date).$($info.fileType).Keys) { $HistoricalDBObj.days.$($info.dateObj.Date).$($info.fileType) = @{} } #TODO: sort somewhow into [ordered]?
             
             # TODO: add support for more than .csv files via handler
@@ -211,38 +229,25 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
         return $HistoricalDBObj
     }
     #$res = loadHistoricalDB -reportsDir $cache:dashinfo.$DashboardName.settingsObj.ReportsDirectory #-Force
-    
-    Function CRUDHistoricalMetadata {
-        # index selected days
-        param(
-            $operation = 'get' #get/set
-        )
-    
-        $dailyrecord = @{
-    
-            OverallStateSelected     = '-1';
-            ControllerStatesSelected = '-1';
-            AirwaveStatesSelected    = '-1';
-    
-        }
-    
-    }
-    #CRUDHistoricalMetadata
 
     Function newRecordPath {
         #generates a reversable full file path 
         param(
             $Dirpath,
-            $FileNameEnd = 'file.csv'
+            $FileNameEnd = 'file.csv',
+            
+            #optional
+            [datetime]
+            $datetime = $(get-date)
         )
         #set this up for easy record files naming
         $filestampT = '{0:yyyy-MM-dd hh.mm.ss}'
         $recordTemplate = "$($Dirpath)\$($filestampT)_{1}"
         
-        $recordTemplate -f (get-date), $FileNameEnd
+        $recordTemplate -f $datetime, $FileNameEnd
     
     }
-    #newRecordPath -Dirpath $cache:dashinfo.$DashboardName.dashPath -FileNameEnd myfile.csv
+    #newRecordPath -Dirpath $cache:dashinfo.$DashboardName.dashPath -FileNameEnd myfile.csv -datetime (get-date)
 
     Function getRecordInfoFromFullPath {
         # returns a date and type from a record fullpath
@@ -267,15 +272,103 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
     #$info.fileType
 
     Function emitOperationsButtons {
+        param(
+            $recordType
+        )
         New-UDPaper -Children {
 
             New-UDStack -Id 'overallButtonStack' -Content {
 
                 New-UDButton -Text "Load From API" -OnClick { }
-                New-UDButton -Text "Save to DB" -OnClick { }
+                New-UDButton -Text "Save to DB" -OnClick (iex ('{ 
+
+                    if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+
+                    $recordType = "{0}"
+               
+                    saveToDb -recordType $recordType
+                 }' -replace '\{0\}', $recordType))
             }
         }
     }
+    
+    Function priv_makeOverallRows {
+
+        
+        $recordType = 'airwaveReport'
+        $DailyDownReport = $cache:dashinfo.$DashboardName.HistoricalDB.days.$($session:selectedDay.day).$recordType.$($session:selectedDay.$recordType)
+        
+        $recordType = 'ArubaControllerAPDatabase'
+        $ControllerAPStatus = $cache:dashinfo.$DashboardName.HistoricalDB.days.$($session:selectedDay.day).$recordType.$($session:selectedDay.$recordType)
+
+        
+        $targets = @()
+        ForEach ($obj in $ControllerAPStatus | select-object Name, "IP Address", status ) {
+    
+            $target0 = $DailyDownReport | ? { $_.Device -eq $obj.Name -and $_.folder -notlike "*Controllers*" }
+    
+            if ($target0) {
+                $targets += $obj
+            }
+        }
+    
+        $targets | add-member -MemberType NoteProperty -name "PingReply" -value $null -force
+        $targets | add-member -MemberType NoteProperty -name "DateTested" -value $null -force
+        $targets | add-member -MemberType NoteProperty -name "ActualStatus" -value $null -force
+        $targets | add-member -memberType NoteProperty -name "Recomendations" -value $null -force
+
+        $targets | add-member -memberType NoteProperty -name "Last 7 Days" -value $null -force
+        $targets | add-member -memberType NoteProperty -name "Last 14 Days" -value $null -force
+        $targets | add-member -memberType NoteProperty -name "Last 30 Days" -value $null -force
+        $targets | add-member -memberType NoteProperty -name "Last 90 Days" -value $null -force
+        $targets | add-member -memberType NoteProperty -name "Last 120 Days" -value $null -force
+        $targets | add-member -memberType NoteProperty -name "Last 365 Days" -value $null -force
+    
+    
+        #foreach  ($obj in $targets) {
+
+        $targets | foreach-object -ThrottleLimit 10 -Parallel {
+
+            $obj = $_
+
+            $obj.datetested = Get-Date
+            $obj.PingReply = Test-NetConnection -computername $obj.'ip address' | Select-Object -ExpandProperty PingSucceeded
+            
+            $obj.ActualStatus = if ($obj.PingReply -eq "True" -and $obj.Status -like "UP*") {
+                "Up"
+            }
+            else {
+                "Down"
+            }
+            $obj.Recomendations = if ($obj.PingReply -eq "True" -and $obj.Status -like "UP*") {
+                "None"
+            }
+            else {
+                "Reset Switch Port"
+            }
+    
+        }
+
+    
+        [array]$rowHeadersF = New-UDDataGridColumn -Flex 1.0 -Field 'Selector' -Render {
+
+            $session:temp = $EventData
+            New-UDCheckBox  -OnChange {
+                Show-UDToast -Duration 4000 -Message "selected : $($session:temp)"
+            }
+        }
+        $targets[0].psobject.properties.name | % { [array]$rowHeadersF += @{ field = $_; editable = $true ; Flex = 1.0 } }
+                
+
+        $Page:OverallState = $targets
+        $page:OverallStateHeaders = $rowHeadersF
+        
+        #$targets | export-csv -path .\ArubaDailyDown$(get-date -f yyyy-MM-dd).csv
+    
+        $targets
+    }
+    #$overallrows = priv_makeOverallRows
+    
 }
 
 
@@ -327,20 +420,35 @@ New-UDRow -Id "mainrow" -Columns {
                                 
                                             if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
                                 
-                                            priv_makeOverallRows
-
-                                            sync-udelement -id 'Overall.tab.div'
+                                            $overallrows = priv_makeOverallRows
+                                            
+                                            #sync-udelement -id 'OverallState.prop'
+                                            
+                                            Clear-UDElement -id 'overallpropgrid.div'
+                                            set-udelement -id 'overallpropgrid.div' -content {
+                                                if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+                                                emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'OverallState' -allrows $page:OverallState
+                                            }
+                                            
                                         }
 
-                                        New-UDButton -Text "Save to DB" -OnClick { }
 
                                         $recordType = 'OverallState'
                                         if (!$cache:dashinfo.$DashboardName.HistoricalDB.days.$($session:selectedDay.day).$recordType.$($session:selectedDay.$recordType)) {
                                             $isdisabled = @{'disabled' = $true }
                                         }
                             
-                                        New-UDButton -Text "Ping Targets" @isdisabled -OnClick { Debug-PSUDashboard }
+                                        #New-UDButton -Text "Ping Targets" @isdisabled -OnClick { Debug-PSUDashboard }
                                         New-UDButton -Text "Generate NodeDown Stats" @isdisabled -OnClick { Debug-PSUDashboard }
+
+                                        New-UDButton -Text "Save to DB" -OnClick { 
+
+                                            if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+
+                                            $recordType = 'OverallState'
+                                       
+                                            saveToDb -recordType $recordType
+                                        }
                                         
                                     }
                                 }
@@ -348,7 +456,15 @@ New-UDRow -Id "mainrow" -Columns {
                             }
 
                             New-UDExpansionPanel -Active -Title "Data" -Id 'expansionPanel2' -Content {
-                                emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'OverallState'
+
+                                new-udelement -tag div -id 'overallpropgrid.div' -Endpoint {
+
+                                    if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+                                    
+                                    if($session:selectedDay.OverallState){
+                                        emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'OverallState'
+                                    }else{"No Rows"}
+                                }
                             }
                         }
                     }
@@ -408,17 +524,15 @@ New-UDRow -Id "mainrow" -Columns {
                 New-UDTab -Id 'Historical.tab' -Text "Historical Runs" -Content {
                 
                     New-UDCard -Id 'Historical.tab.div' -Content {
-                    #New-UDElement -tag div -Id 'Historical.tab.div' -Content {
+                        #New-UDElement -tag div -Id 'Historical.tab.div' -Content {
                     
                         if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
 
                         #$res = loadHistoricalDB -reportsDir $cache:dashinfo.$DashboardName.settingsObj.ReportsDirectory #-Force
 
-                    
                         $LoadRowsSB = { Out-UDDataGridData -Data $Page:allrows -Total $Page:allrows.Length -Context $EventData }
-                        $OnEdit = { Show-UDToast "Editing $Body" }
-                        New-UDDataGrid -id "Historical.prop" -Columns $page:rowHeadersF -LoadRows $LoadRowsSB -PageSize 200 #-OnEdit $OnEdit  
-                    
+                        New-UDDataGrid -id "Historical.prop" -Columns $page:rowHeadersF -LoadRows $LoadRowsSB -PageSize 200 #-OnEdit { Show-UDToast "Editing $Body" }
+
                     }
 
                 }
