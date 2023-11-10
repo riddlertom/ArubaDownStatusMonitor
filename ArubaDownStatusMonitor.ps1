@@ -86,7 +86,8 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
                     Write-Error $_
                 }
                 
-            } else {
+            }
+            else {
                 $fileContents = ''
             }
 
@@ -409,19 +410,41 @@ New-UDApp -Title $title -Pages @(
 
 )
 
-#https://www.quartz-scheduler.net/documentation/quartz-3.x/tutorial/crontrigger.html
-#New-UDEndpointSchedule -Cron '0 15 10 ? * MON-FRI'
-$cronEveryday8am = '0 8 * * *'
-$cronEveryday8am = '* * * * * *'
-#$EndpointDaily = New-UDEndpoint -Schedule (New-UDEndpointSchedule -Cron $cronEveryday8am) -Endpoint {
 
-$EndpointDaily = New-UDEndpoint -Schedule (New-UDEndpointSchedule -Every 1 -Day ) -Endpoint {
 
- 
-	#if(!(Test-Path function:DummyGlobalFunction)){iex $cache:globalFunctionsSB.ToString()}
+#schedule api scraping to happen each day
+$cache:dashinfo.$DashboardName.GetAPIdataSB_scheduledEndpoint = {
+
+    $now = get-date
+    if ($now.hour -eq 8) {
+        #this is a hack to workaround new-udschedule -cron *possibly* not working properly.
+
+        if (!(Test-Path function:priv_loadSettings)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
+        if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
     
-    #$cache:debugit123 = (get-date)
+        $res = loadHistoricalDB -reportsDir $cache:dashinfo.$DashboardName.settingsObj.ReportsDirectory -Force
+        makeHistoricalDbGrid -HistoricalDB $res
+    
+        $cache:dashinfo.$DashboardName.GetAPIdataSB_ArubaControllerAPDatabase.invoke()
+        saveToDb -recordType 'ArubaControllerAPDatabase'
+    
+        $cache:dashinfo.$DashboardName.GetAPIdataSB_airwaveReport.invoke()
+        saveToDb -recordType 'airwaveReport'
+        
+        $overallrows = priv_makeOverallRows
+        emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'OverallState' -allrows $page:OverallState
 
+        GenerateNodeDownStats
+
+        saveToDb -recordType 'OverallState'
+
+        #todo: test with ZERO user interaction over multiple days.
+    }
+        
 }
+$EndpointDaily = New-UDEndpoint -Schedule (New-UDEndpointSchedule -Every 1 -Hour) -Endpoint $cache:dashinfo.$DashboardName.GetAPIdataSB_scheduledEndpoint
+
+#ez test
+#$EndpointDaily = New-UDEndpoint -Schedule (New-UDEndpointSchedule -Every 1 -Second) -Endpoint { $now =get-date ;$cache:test2=$now; if($now.Second -like "*2*"){$cache:test = $now} }
 
 #endregion
