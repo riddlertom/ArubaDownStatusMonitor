@@ -1,6 +1,11 @@
 ﻿New-UDPage -Url "/home" -Name "home" -Content {
 $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
 
+    Function GenerateNodeDownStats{
+        param()
+
+        Show-UDToast -Message "GenerateNodeDownStats Not Implemented"
+    }
 
     Function loadFromApi {
         param(
@@ -496,8 +501,6 @@ New-UDRow -Id "mainrow" -Columns {
 
     New-UDColumn -Id "maincol1" -Size 12 -Content {
 
-        
-
         $layout = '{"lg":[{"w":1,"h":1,"x":6,"y":0,"i":"grid-element-debugit","moved":false,"static":false},{"w":3,"h":1,"x":3,"y":0,"i":"grid-element-currentArubaID","moved":false,"static":false},{"w":3,"h":1,"x":0,"y":0,"i":"grid-element-currentAirwaveID","moved":false,"static":false},{"w":12,"h":16,"x":0,"y":1,"i":"grid-element-homeTabs","moved":false,"static":false}]}'
         New-UDGridLayout -id "grid_layout1" -layout $layout -Content { # add the '-design' flag to temporarily to obtain json layout
         
@@ -557,7 +560,10 @@ New-UDRow -Id "mainrow" -Columns {
                                             #>
                             
                                             #New-UDButton -Text "Ping Targets" @isdisabled -OnClick { Debug-PSUDashboard }
-                                            New-UDButton -Text "Generate NodeDown Stats" @isdisabled -OnClick { Debug-PSUDashboard }
+                                            New-UDButton -Text "Generate NodeDown Stats" @isdisabled -OnClick { 
+                                            
+                                                GenerateNodeDownStats
+                                            }
 
                                             New-UDButton -Text "Save to DB" @isdisabled -OnClick { 
 
