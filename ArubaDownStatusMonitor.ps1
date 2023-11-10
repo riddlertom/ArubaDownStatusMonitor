@@ -86,8 +86,7 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
                     Write-Error $_
                 }
                 
-            }
-            else {
+            } else {
                 $fileContents = ''
             }
 
@@ -125,13 +124,9 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
                     $settingsObj.$settingsId = [bool]::parse($settingsObj.$settingsId)
                 }
 
-                #Set-UDElement -Id $settingsId -Properties @{value = $settingsObj.$settingsId }
             }
 
             if ($settingsObj.$settingsId) {
-
-                #Set-UDElement -Id $settingsId -Properties @{value = $settingsObj.$settingsId }
-                
                 
                 # decode pass strings and replace with casted secureobjs
                 if ($settingsId -like "*pass*" -and $settingsObj.$settingsId -is [string]) {
@@ -139,12 +134,10 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
                     $encStr = $settingsObj.$settingsId
 
                     #$encStr = "76492d1...ANwA="
-                    $SecurStrObj = ($encStr | ConvertTo-SecureString $cache:dashinfo.$DashboardName.Key)
+                    $SecurStrObj = ($encStr | ConvertTo-SecureString -Key $cache:dashinfo.$DashboardName.Key)
                     $settingsObj.$settingsId = $SecurStrObj
-                }
-                
+                }                
             }
-
         }
 
         #save to cache for other calls
@@ -286,10 +279,10 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
             
         .EXAMPLE
             # Call a brand new connection
-            $AuthedSession = GetArubaControllerAuth -ControllerNameIpPort 'somehost.domain.com:4343' -CookieMaxAgeMins $(New-TimeSpan -Days 365|select -expand TotalMinutes) #-force
+            $AuthedSession = GetArubaControllerAuth -account $account -ControllerNameIpPort 'somehost.domain.com:4343' -CookieMaxAgeMins $(New-TimeSpan -Days 365|select -expand TotalMinutes) #-force
     
             # Re-call a connection with previously authed websession cookie without reAuthing
-            $AuthedSession = GetArubaControllerAuth -ControllerNameIpPort 'somehost.domain.com:4343' -session $AuthedSession -CookieMaxAgeMins $(New-TimeSpan -Days 365|select -expand TotalMinutes) #-force
+            $AuthedSession = GetArubaControllerAuth -account $account -ControllerNameIpPort 'somehost.domain.com:4343' -session $AuthedSession -CookieMaxAgeMins $(New-TimeSpan -Days 365|select -expand TotalMinutes) #-force
     
         #>
         param(
@@ -364,45 +357,7 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
     }
 
     # data sources
-    Function getAirwaveReport {
-        param(
-            $uri,
-            $websession
-        )
-    
-        $res2 = Invoke-RestMethod -uri $uri -SkipCertificateCheck -WebSession $websession
-    
-        <#
-        Device,Group,Folder,"Device Uptime","Device Uptime is Reliable","Time Since Last Contact","Time Since Last Boot","SNMP Comm Uptime","SNMP Comm Up/Down Times","ICMP Comm Uptime","ICMP Comm Up/Down Times","HTTPS Comm Uptime","HTTPS Comm Up/Down Times"
-        phx11-1-08,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 31 mins 39 secs",99.60%,1,99.60%,1,-,-
-        phx14-1-wa02,"Controllers - North America","Top > Controllers - North America > Controllers - phx14",99.83%,Yes,"Comm is ok","19 hrs 48 mins 53 secs",99.74%,1,99.74%,1,-,-
-        phx11-1-11,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 31 mins 39 secs",99.60%,1,99.60%,1,-,-
-        phx14-1-01,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 32 mins 30 secs",99.60%,1,99.60%,1,-,-
-        phx11-1-05,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 31 mins 35 secs",99.29%,1,99.29%,1,-,-
-        phx14-1-02,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 32 mins 13 secs",99.60%,1,99.60%,1,-,-
-        phx11-1-03,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 31 mins 38 secs",99.29%,1,99.29%,1,-,-
-        oma3-1-wlc01-2,"Controllers - North America","Top > Controllers - North America > Controllers - oma2",0.00%,No,"9 days 19 hrs 33 mins 33 secs","Device Down",0.00%,0,100.00%,0,-,-
-    
-        #>
-    
-        $res2
-    }
-    #$res2 = getAirwaveReport -uri 'https://$($cache:dashinfo.$DashboardName.settingsObj.AirwaveIP)/latest_report.xml?id=44754' -websession $cache:dashinfo.$DashboardName.AirwaveWebsession
-    #$res2.report.pickled_ap_uptime | ?{$_.'icmp_up_down_count' -ne 0}
-    
-    Function getControllerReport {
-        param(
-            $uri
-        )
-    
-        $res = invoke-RestMethod -uri "https://$arubaIP/v1/configuration/showcommand?command=show+ap+database&UIDARUBA=$currentArubaID" -SkipCertificateCheck #-WebSession $session   
-        $res
-    }
-    #$currentArubaID = $cache:dashinfo.$DashboardName.currentArubaID
-    #$uri = "https://$($cache:dashinfo.$DashboardName.settingsObj.ControllerIP)/v1/configuration/showcommand?command=show+ap+database&UIDARUBA=$currentArubaID"
-    #$res = getControllerReport -uri $uri
-    #$res | Where-Object { $_.folder -notlike "*Controllers*" } | Select-Object -ExpandProperty Device
-    
+
 }
 
 #endregion #######################################
@@ -412,7 +367,7 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
 
 #region: INIT
 
-# load global functions
+# load settings functions
 if (!(Test-Path function:priv_loadSettings)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
 
 #load settings page backings
@@ -421,7 +376,7 @@ $settingsObj = priv_loadSettings -settingsFile $cache:dashinfo.$DashboardName.Se
 
 # Set any needed defaults
 if (!$cache:dashinfo.$DashboardName.settingsObj.ReportRetentionDays) { $cache:dashinfo.$DashboardName.settingsObj.ReportRetentionDays = 365 }
-if (!$cache:dashinfo.$DashboardName.settingsObj.ReportsDirectory) { $g = "$($cache:dashinfo.$DashboardName.dashPath)\sampleData"; $cache:dashinfo.$DashboardName.settingsObj.ReportsDirectory = $g }
+if (!$cache:dashinfo.$DashboardName.settingsObj.ReportsDirectory) { $g = "$($cache:dashinfo.$DashboardName.dashPath)\reportsData"; $cache:dashinfo.$DashboardName.settingsObj.ReportsDirectory = $g }
 if ($cache:dashinfo.$DashboardName.settingsObj.AirwaveisForce -eq $null) { $cache:dashinfo.$DashboardName.settingsObj.AirwaveisForce = $false }
 if ($cache:dashinfo.$DashboardName.settingsObj.ControllerisForce -eq $null) { $cache:dashinfo.$DashboardName.settingsObj.ControllerisForce = $false }
 
@@ -446,30 +401,6 @@ if (!$FileExists) {
 #region: MAIN
 
 
-function loadHistoricalDB {
-    param(
-        $reportsDir = $cache:dashinfo.$DashboardName.SettingsDb.ReportsDirectory
-    )
-
-    if (!(test-path $reportsDir -ea 0)) { mdkir $reportsDir -Force }
-
-    if ($csvfiles = dir "$reportsDir\*.csv" -ea 0) {}
-    if (!$csvfiles) { Show-UDToast -Duration 4000 -Message "No historical data was found in dir: $reportsDir"; return }
-
-    if ($cache:dashinfo.$DashboardName.HistoricalDB) {
-        $HistoricalDBObj = $cache:dashinfo.$DashboardName.HistoricalDB
-    }
-    else {
-        #build up $HistoricalDBObj 
-        $HistoricalDBObj = @{}
-
-    }
-
-    $cache:dashinfo.$DashboardName.HistoricalDB = $HistoricalDBObj
-    return $HistoricalDBObj
-}
-
-loadHistoricalDB reportsDir = $cache:dashinfo.$DashboardName.SettingsDb.ReportsDirectory
 
 $title = 'ArubaDown Status Monitor'
 New-UDApp -Title $title -Pages @(
@@ -477,5 +408,20 @@ New-UDApp -Title $title -Pages @(
     Get-UDPage -Name 'Settings'
 
 )
+
+#https://www.quartz-scheduler.net/documentation/quartz-3.x/tutorial/crontrigger.html
+#New-UDEndpointSchedule -Cron '0 15 10 ? * MON-FRI'
+$cronEveryday8am = '0 8 * * *'
+$cronEveryday8am = '* * * * * *'
+#$EndpointDaily = New-UDEndpoint -Schedule (New-UDEndpointSchedule -Cron $cronEveryday8am) -Endpoint {
+
+$EndpointDaily = New-UDEndpoint -Schedule (New-UDEndpointSchedule -Every 1 -Day ) -Endpoint {
+
+ 
+	#if(!(Test-Path function:DummyGlobalFunction)){iex $cache:globalFunctionsSB.ToString()}
+    
+    #$cache:debugit123 = (get-date)
+
+}
 
 #endregion

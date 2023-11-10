@@ -41,15 +41,15 @@ New-UDGrid -Container -Content {
                         New-UDButton -Text "Connect" -OnClick {
             
                             if (!(Test-Path function:priv_SaveSettingsFile)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
-            
+           
                             $params = @{
-                                airwaveNameIPPort     = $cache:dashinfo.$DashboardName.settingsObj.ControllerIP;
+                                ControllerNameIpPort     = $cache:dashinfo.$DashboardName.settingsObj.ControllerIP;
                                 session          = $cache:dashinfo.$DashboardName.ControllerWebsession;
                                 CookieMaxAgeMins = $(New-TimeSpan -Days 365 | select -expand TotalMinutes);
                                 account          = [pscredential]::new($cache:dashinfo.$DashboardName.settingsObj.ControllerUser, $cache:dashinfo.$DashboardName.settingsObj.ControllerPass)
                                 force            = $cache:dashinfo.$DashboardName.settingsObj.ControllerisForce;
                             }
-                            $cache:dashinfo.$DashboardName.ControllerWebsession = GetArubaAirwaveAuth @params
+                            $cache:dashinfo.$DashboardName.ControllerWebsession = GetArubaControllerAuth @params
             
                             $domain = $cache:dashinfo.$DashboardName.settingsObj.ControllerIP -split ':' | select -first 1
                             $currentArubaCookie = $cache:dashinfo.$DashboardName.ControllerWebsession.Cookies.getAllCookies() | ?{$_.domain -eq $domain} | select -first 1

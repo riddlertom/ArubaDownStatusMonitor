@@ -1,5 +1,20 @@
 ﻿New-UDPage -Url "/home" -Name "home" -Content {
 $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
+
+
+    Function loadFromApi {
+        param(
+            $recordType
+        )
+
+        # this should be stashed as an SB that could be updated by user vs hard coded here
+        $sbstr = '$cache:dashinfo.$DashboardName.GetAPIdataSB_{0}' -f $recordType
+
+        $Sb = iex $sbstr
+
+        $Sb.invoke()
+    }
+
     Function saveToDb {
         param(
             $recordType
@@ -8,7 +23,7 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
         $saveRows0 = (iex "`$page:$recordType") # | select -ExcludeProperty rendered*")
 
         $now = $saveRows0 | select -first 1 -ExpandProperty RenderedOriginTimeStamp
-        if(!$now){
+        if (!$now) {
             write-error "missing timestamp on record(s). Defaulting to saving csv file to today"
             $now = get-date
         }
@@ -62,7 +77,8 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
         if ($isnewRecords) {
             
             $allrows | % { add-member -InputObject $_ -MemberType NoteProperty -name "RenderedOriginTimeStamp" -value $session:selectedDay.$recordType -force }
-        }else{
+        }
+        else {
             $allrows | % { add-member -InputObject $_ -MemberType NoteProperty -name "RenderedOriginTimeStamp" -value (get-date) -force }
         }
 
@@ -83,7 +99,7 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
 
         $OnEdit0 = '
 
-            $newrow = $EventData.newRow
+            $newrow = $EventData.newRow | select * -exclude Id
             $RenderedinternalGuid = $newRow.RenderedinternalGuid
 
             $i = 0
@@ -149,7 +165,7 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
                 New-UDButton -Text "Load" -OnClick { 
     
                     $session:selectedDay = $session:Historicalprop 
-#                   $cache:selectedDay = $session:selectedDay
+                    #                   $cache:selectedDay = $session:selectedDay
     
                     #sync-udelement
                     Show-UDToast -Duration 4000 -Message "Loaded day: $($session:Historicalprop.day)"
@@ -181,9 +197,9 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
     
             $dailyrecord = @{
             
-                OverallState    = @{};        
+                OverallState              = @{};        
                 ArubaControllerAPDatabase = @{};        
-                airwaveReport    = @{};
+                airwaveReport             = @{};
             }
             
             $dailyrecord
@@ -279,15 +295,27 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
 
             New-UDStack -Id 'overallButtonStack' -Content {
 
-                New-UDButton -Text "Load From API" -OnClick { }
-                New-UDButton -Text "Save to DB" -OnClick (iex ('{ 
+                New-UDButton -Text "Load From API" -OnClick (
+                    iex ('{ 
+
+                    if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+
+                    $recordType = "{0}"
+               
+                    loadFromApi -recordType $recordType
+                    }' -replace '\{0\}', $recordType)
+                )
+
+                New-UDButton -Text "Save to DB" -OnClick (
+                    iex ('{ 
 
                     if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
 
                     $recordType = "{0}"
                
                     saveToDb -recordType $recordType
-                 }' -replace '\{0\}', $recordType))
+                    }' -replace '\{0\}', $recordType)
+                )
             }
         }
     }
@@ -316,6 +344,7 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
         $targets | add-member -MemberType NoteProperty -name "DateTested" -value $null -force
         $targets | add-member -MemberType NoteProperty -name "ActualStatus" -value $null -force
         $targets | add-member -memberType NoteProperty -name "Recomendations" -value $null -force
+        $targets | add-member -memberType NoteProperty -name "Notes" -value $null -force
 
         $targets | add-member -memberType NoteProperty -name "Last 7 Days" -value $null -force
         $targets | add-member -memberType NoteProperty -name "Last 14 Days" -value $null -force
@@ -371,8 +400,86 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
     
 }
 
+$cache:dashinfo.$DashboardName.GetAPIdataSB_airwaveReport = {
 
-#$control.'AP Database' | Export-Csv -LiteralPath C:\ProgramData\UniversalAutomation\Repository\dashboards\ArubaDownStatusMonitor\sampleData\ArubaControllerAPDatabase.csv
+    if (!(Test-Path function:priv_SaveSettingsFile)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
+              
+
+    if (!$cache:dashinfo.$DashboardName.currentAirwaveID) {
+        $params = @{
+            ControllerNameIpPort = $cache:dashinfo.$DashboardName.settingsObj.AirwaveIP;
+            session              = $cache:dashinfo.$DashboardName.AirwaveWebsession;
+            CookieMaxAgeMins     = $(New-TimeSpan -Days 365 | select -expand TotalMinutes);
+            account              = [pscredential]::new($cache:dashinfo.$DashboardName.settingsObj.AirwaveUser, $cache:dashinfo.$DashboardName.settingsObj.AirwavePass)
+            force                = $cache:dashinfo.$DashboardName.settingsObj.AirwaveisForce;
+        }
+        $cache:dashinfo.$DashboardName.AirwaveWebsession = GetArubaAirwaveAuth @params
+    }
+
+    $currentAirwaveID = $cache:dashinfo.$DashboardName.currentAirwaveID
+    if (!$currentAirwaveID) { Write-Error "Unable to obtain token currentAirwaveID"; return }
+
+    #---------------------
+
+    $res2 = Invoke-RestMethod -uri 'https://$($cache:dashinfo.$DashboardName.settingsObj.AirwaveIP)/latest_report.xml?id=44754' -websession $cache:dashinfo.$DashboardName.AirwaveWebsession
+    $allrows = $res2.report.pickled_ap_uptime | ? { $_.'icmp_up_down_count' -ne 0 }
+    <#
+        Device,Group,Folder,"Device Uptime","Device Uptime is Reliable","Time Since Last Contact","Time Since Last Boot","SNMP Comm Uptime","SNMP Comm Up/Down Times","ICMP Comm Uptime","ICMP Comm Up/Down Times","HTTPS Comm Uptime","HTTPS Comm Up/Down Times"
+        phx11-1-08,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 31 mins 39 secs",99.60%,1,99.60%,1,-,-
+        phx14-1-wa02,"Controllers - North America","Top > Controllers - North America > Controllers - phx14",99.83%,Yes,"Comm is ok","19 hrs 48 mins 53 secs",99.74%,1,99.74%,1,-,-
+        phx11-1-11,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 31 mins 39 secs",99.60%,1,99.60%,1,-,-
+        phx14-1-01,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 32 mins 30 secs",99.60%,1,99.60%,1,-,-
+        phx11-1-05,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 31 mins 35 secs",99.29%,1,99.29%,1,-,-
+        phx14-1-02,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 32 mins 13 secs",99.60%,1,99.60%,1,-,-
+        phx11-1-03,"Access Points - North America","Top > Access Points - North America > Access Points - phx14",100.00%,Yes,"Comm is ok","17 days 6 hrs 31 mins 38 secs",99.29%,1,99.29%,1,-,-
+        oma3-1-wlc01-2,"Controllers - North America","Top > Controllers - North America > Controllers - oma2",0.00%,No,"9 days 19 hrs 33 mins 33 secs","Device Down",0.00%,0,100.00%,0,-,-
+    
+        #>
+
+    Clear-UDElement -id 'airwaveReport.div'
+    set-udelement -id 'airwaveReport.div' -content {
+        if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+        emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'airwaveReport' -allrows $allrows #$page:ArubaControllerAPDatabase
+    }
+
+}
+
+$cache:dashinfo.$DashboardName.GetAPIdataSB_ArubaControllerAPDatabase = {
+
+    # load global functions
+    if (!(Test-Path function:priv_loadSettings)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
+    if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+    
+
+    if (!$cache:dashinfo.$DashboardName.currentArubaID) {
+
+        $params = @{
+            ControllerNameIpPort = $cache:dashinfo.$DashboardName.settingsObj.ControllerIP;
+            session              = $cache:dashinfo.$DashboardName.ControllerWebsession;
+            CookieMaxAgeMins     = $(New-TimeSpan -Days 365 | select -expand TotalMinutes);
+            account              = [pscredential]::new($cache:dashinfo.$DashboardName.settingsObj.ControllerUser, $cache:dashinfo.$DashboardName.settingsObj.ControllerPass)
+            force                = $cache:dashinfo.$DashboardName.settingsObj.ControllerisForce;
+        }
+        $cache:dashinfo.$DashboardName.ControllerWebsession = GetArubaControllerAuth @params
+    }
+
+    $arubaId = $cache:dashinfo.$DashboardName.currentArubaID
+    if (!$arubaId) { Write-Error "Unable to obtain token"; return }
+    
+
+    $control = invoke-RestMethod -uri "https://$($params.ControllerNameIpPort)/v1/configuration/showcommand?command=show+ap+database&UIDARUBA=$arubaId" -SkipCertificateCheck #-WebSession $session
+    $allrows = $control.'AP Database' # TODO: VERIFY we don't need this: #| Where-Object { $_.folder -notlike "*Controllers*" } | Select-Object -ExpandProperty Device
+
+    Clear-UDElement -id 'ArubaControllerAPDatabase.div'
+    set-udelement -id 'ArubaControllerAPDatabase.div' -content {
+        if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+        emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'ArubaControllerAPDatabase' -allrows $allrows #$page:ArubaControllerAPDatabase
+    }
+    
+    #sync-udelement -id 'overallOpsDiv' #update buttons if ever needed lookgs like this
+
+}
+
 
 if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
 
@@ -389,7 +496,7 @@ New-UDRow -Id "mainrow" -Columns {
 
     New-UDColumn -Id "maincol1" -Size 12 -Content {
 
-        #invoke-RestMethod -uri "https://10.185.11.220:4343/v1/configuration/showcommand?command=show+ap+database&UIDARUBA=$arubaId" -SkipCertificateCheck #-WebSession $session
+        
 
         $layout = '{"lg":[{"w":1,"h":1,"x":6,"y":0,"i":"grid-element-debugit","moved":false,"static":false},{"w":3,"h":1,"x":3,"y":0,"i":"grid-element-currentArubaID","moved":false,"static":false},{"w":3,"h":1,"x":0,"y":0,"i":"grid-element-currentAirwaveID","moved":false,"static":false},{"w":12,"h":16,"x":0,"y":1,"i":"grid-element-homeTabs","moved":false,"static":false}]}'
         New-UDGridLayout -id "grid_layout1" -layout $layout -Content { # add the '-design' flag to temporarily to obtain json layout
@@ -413,46 +520,57 @@ New-UDRow -Id "mainrow" -Columns {
 
                             New-UDExpansionPanel -Title "Operations" -Id 'expansionPanel1' -Content {
 
-                                New-UDPaper -Children {
-                                    New-UDStack -Id 'overallButtonStack' -Content {
+                                New-UDElement -tag div -id "overallOpsDiv" -Endpoint {
 
-                                        New-UDButton -Text "Generate Grid" -OnClick { 
+                                    New-UDPaper -Children {
+                                        New-UDStack -Id 'overallButtonStack' -Content {
+
+                                            New-UDButton -Text "Generate Grid" -OnClick { 
                                 
-                                            if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
-                                
-                                            $overallrows = priv_makeOverallRows
-                                            
-                                            #sync-udelement -id 'OverallState.prop'
-                                            
-                                            Clear-UDElement -id 'overallpropgrid.div'
-                                            set-udelement -id 'overallpropgrid.div' -content {
                                                 if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
-                                                emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'OverallState' -allrows $page:OverallState
-                                            }
+                                
+                                                $overallrows = priv_makeOverallRows
                                             
-                                        }
+                                                #sync-udelement -id 'OverallState.prop'
+                                            
+                                                Clear-UDElement -id 'overallpropgrid.div'
+                                                set-udelement -id 'overallpropgrid.div' -content {
+                                                    if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+                                                    emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'OverallState' -allrows $page:OverallState
+                                                }
+                                                
+                                                sync-udelement -id 'overallOpsDiv'
+                                            }
 
-
-                                        $recordType = 'OverallState'
-                                        if (!$cache:dashinfo.$DashboardName.HistoricalDB.days.$($session:selectedDay.day).$recordType.$($session:selectedDay.$recordType)) {
-                                            $isdisabled = @{'disabled' = $true }
-                                        }
-                            
-                                        #New-UDButton -Text "Ping Targets" @isdisabled -OnClick { Debug-PSUDashboard }
-                                        New-UDButton -Text "Generate NodeDown Stats" @isdisabled -OnClick { Debug-PSUDashboard }
-
-                                        New-UDButton -Text "Save to DB" -OnClick { 
-
-                                            if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
 
                                             $recordType = 'OverallState'
+                                            
+
+                                            $HasOverallState = $session:selectedDay.$recordType | Measure-Object | select -ExpandProperty count
+                                            $isdisabled = @{'disabled' = $true }
+                                            if ($page:overallState -or $HasOverallState) {
+                                                                                        
+                                                $isdisabled = @{'disabled' = $false }                                                
+                                            }
+
+
+                                            #>
+                            
+                                            #New-UDButton -Text "Ping Targets" @isdisabled -OnClick { Debug-PSUDashboard }
+                                            New-UDButton -Text "Generate NodeDown Stats" @isdisabled -OnClick { Debug-PSUDashboard }
+
+                                            New-UDButton -Text "Save to DB" @isdisabled -OnClick { 
+
+                                                if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+
+                                                $recordType = 'OverallState'
                                        
-                                            saveToDb -recordType $recordType
-                                        }
+                                                saveToDb -recordType $recordType
+                                            }
                                         
+                                        }
                                     }
                                 }
-                                
                             }
 
                             New-UDExpansionPanel -Active -Title "Data" -Id 'expansionPanel2' -Content {
@@ -461,9 +579,11 @@ New-UDRow -Id "mainrow" -Columns {
 
                                     if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
                                     
-                                    if($session:selectedDay.OverallState){
+                                    $HasOverallState = $session:selectedDay.overallstate | Measure-Object | select -ExpandProperty count
+                                    if ($HasOverallState) {
                                         emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'OverallState'
-                                    }else{"No Rows"}
+                                    }
+                                    else { "No Rows" }
                                 }
                             }
                         }
@@ -486,9 +606,15 @@ New-UDRow -Id "mainrow" -Columns {
                                 }
                                 
                             }
-                            
+
                             New-UDExpansionPanel -Active -Title "Data" -Id 'expansionPanel2' -Content {
-                                emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'ArubaControllerAPDatabase'
+
+                                new-udelement -tag div -id 'ArubaControllerAPDatabase.div' -Endpoint {
+                                
+                                    if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+                                    emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'ArubaControllerAPDatabase'
+                                }
+
                             }
                         }
 
@@ -513,8 +639,14 @@ New-UDRow -Id "mainrow" -Columns {
                             }
                             
                             New-UDExpansionPanel -Active -Title "Data" -Id 'expansionPanel2' -Content {
-                                emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'airwaveReport'
+                                
+                                new-udelement -tag div -id 'airwaveReport.div' -Endpoint {
+
+                                    if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
+                                    emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'airwaveReport'
+                                }
                             }
+
                         }
 
                     }
