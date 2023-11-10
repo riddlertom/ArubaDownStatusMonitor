@@ -1,12 +1,12 @@
 {
-  "AirwaveIP": "",
-  "ReportsDirectory": "",
+  "ControllerPass": "76492d1116743f0423413b16050a5345MgB8AGYAVQBRAGYATQBKADUARwBJAFkATwBPADcAZQBNAEQAawBQAGoALwAwAFEAPQA9AHwAZQBhADkAOQA2AGYAOQBmAGQAMQBlAGMANQA3ADMANgA4AGMAZQAyADMAYwA5ADkAYQAwADAAMAAzADgANgBmADkANgA0ADQAOQBiAGYAOQA4ADgAYQAyADYAMgBhAGIAYgA3ADYAZAA1ADgAMwBkADUAYQA0AGIANwAwADUAZQA=",
+  "ReportsDirectory": "C:\\ProgramData\\UniversalAutomation\\Repository\\dashboards\\ArubaDownStatusMonitor\\sampleData",
   "ReportRetentionDays": 365,
-  "ControllerUser": "apanzarella",
-  "ControllerisForce": false,
+  "ControllerUser": "userTest1",
+  "AirwaveUser": "awave1user2",
+  "AirwaveIP": "airwave123:443",
+  "ControllerIP": "10.0.0.1:443",
   "AirwaveisForce": false,
-  "ControllerPass": "",
-  "AirwavePass": "",
-  "AirwaveUser": "",
-  "ControllerIP": ""
+  "AirwavePass": "76492d1116743f0423413b16050a5345MgB8ADgAQwAxADMAdABJAG0ARwArAEYAdgBvAGEAZQBKAGEAKwA3AEsAYQAwAHcAPQA9AHwANQA4ADkANgA1ADQAMgA2ADAAOQBhADQANQBiAGIAMgA3AGUAMQAwAGUAOQA2AGMAOQAxAGMAOQBiADUANQA4AGYAOAA2AGMANwA3AGIAMAA2AGMAOAA1ADUANAA4ADcAOQA0ADAAZgAwADQAMgA0AGYANgAyADIANQBmAGIAOAA=",
+  "ControllerisForce": false
 }

@@ -1,286 +1,9 @@
 ﻿New-UDPage -Url "/settings" -Name "settings" -Content {
-#settings-specfic names that we load/update
-$cache:dashinfo.$DashboardName.settingsIds = 'ControllerIP,ControllerUser,ControllerPass,ControllerisForce,AirwaveIP,AirwaveUser,AirwavePass,AirwaveisForce,ReportsDirectory,ReportRetentionDays' -split ','
-
-$cache:dashinfo.$DashboardName.settingsFunctionsSB = {
-    Function priv_SaveSettingsFile {
-        # Updates both the file settingsobj from cache
-        param($settingsFile)
-
-        $settingsIds = $cache:dashinfo.$DashboardName.settingsIds
-        $settingsObj = $cache:dashinfo.$DashboardName.settingsObj
-
-
-        #build a persistable object to save to disk (e.g. no securestrings / binary objects that won't convert easily to json)
-        $settingsObj_persist = @{}
-        foreach ($settingsId in $settingsIds) {
-
-            if ($settingsId -like "*pass*" -and $settingsObj.$settingsId -is [securestring] ) {
-                
-                # encode pass strings to not be clear text
-                if ($settingsObj.$settingsId -ne $null) {
-                    
-                    $encStr = $settingsObj.$settingsId | ConvertFrom-SecureString -Key @(15..0)
-                    $settingsObj_persist.$settingsId = $encStr
-                }
-                else {
-                    $settingsObj_persist.$settingsId = $null
-                }
-            }
-            else {
-                $settingsObj_persist.$settingsId = $settingsObj.$settingsId
-            }
-            
-        }
-
-
-        $fileContents = $settingsObj_persist | ConvertTo-Json
-
-        try {
-
-            set-content -LiteralPath $settingsFile -value $fileContents -encoding utf8 
-            Show-UDToast -Duration 4000 -Message "Saved current settings to: $settingsFile" 
-        }
-        catch {
-
-            Write-Error $_
-        }
-
-        return $settingsObj_persist
-    }
-
-    Function priv_loadSettings {
-        #inits, reads, and loads settingsobj to the forms and cache
-        param($settingsFile)
-
-        $settingsIds = $cache:dashinfo.$DashboardName.settingsIds
-
-        # on first load, read from file
-        if (!$cache:dashinfo.$DashboardName.settingsObj) {
-
-            $FileExists = $null
-            try { $FileExists = test-path $settingsFile -ea 0 }catch {}
-            if ($FileExists) {
-                try {
-                    $fileContents = gc $settingsFile -Encoding utf8
-                    Show-UDToast -Duration 4000 -Message "Loaded settings from: $settingsFile"
-                }
-                catch {
-                    <#Do this if a terminating exception happens#>
-                    Write-Error $_
-                }
-                
-            }
-            else {
-                try {
-                    $fileContents = ''
-                    set-content -value $fileContents -encoding utf8 -path $settingsFile
-                    Show-UDToast -Duration 4000 -Message "Initialized settings to $settingsFile"
-                }
-                catch {
-                    Write-Error $_
-                }
-            }
-
-            $settingsObj = $fileContents | ConvertFrom-Json
-            if (!$settingsObj) {
-                $settingsObj = @{}
-            
-                foreach ($settingsId in $settingsIds) {
-                    if (!$settingsObj.$settingsId) {
-                        $settingsObj.$settingsId = ''
-                    }
-                }
-            }
-        }
-        else {
-            $settingsObj = $cache:dashinfo.$DashboardName.settingsObj
-        }
-
-
-        #---------------------
-
-
-        #finally: convert/format to binary/class (we refresh / sync-udelements in other areas of the program)
-        foreach ($settingsId in $settingsIds) {
-            
-
-            #cast bools
-            if ($settingsId -like "*isForce*") {
-
-                if (!$settingsObj.$settingsId) {
-
-                    $settingsObj.$settingsId = $false
-                }
-                else {
-                    $settingsObj.$settingsId = [bool]::parse($settingsObj.$settingsId)
-                }
-
-                #Set-UDElement -Id $settingsId -Properties @{value = $settingsObj.$settingsId }
-            }
-
-            if ($settingsObj.$settingsId) {
-
-                #Set-UDElement -Id $settingsId -Properties @{value = $settingsObj.$settingsId }
-                
-                
-                # decode pass strings and replace with casted secureobjs
-                if ($settingsId -like "*pass*" -and $settingsObj.$settingsId -is [string]) {
-                
-                    $encStr = $settingsObj.$settingsId
-
-                    #$encStr = "76492d1...ANwA="
-                    $SecurStrObj = ($encStr | ConvertTo-SecureString -key @(15..0))
-                    $settingsObj.$settingsId = $SecurStrObj
-                }
-                
-            }
-
-        }
-
-        #save to cache for other calls
-        $cache:dashinfo.$DashboardName.settingsObj = $settingsObj
-
-        
-        return $settingsObj
-    }
-
-    function priv_setpassword {
-        #updates securee string from password fields
-        param(
-            $propertyName,
-            $propertyValue
-        )
-      
-        if ($propertyValue -ne $null) {
-
-            $encStr = $propertyValue | ConvertTo-SecureString -AsPlainText -Force |  ConvertFrom-SecureString -Key @(15..0)                
-            $SecurStrObj = ($encStr | ConvertTo-SecureString -key @(15..0))
-            $cache:dashinfo.$DashboardName.settingsObj.$propertyName = $SecurStrObj
-        }
-        else {
-            #$cache:dashinfo.$DashboardName.settingsObj.$propertyName = $propertyValue 
-        }
-
-    }
-
-    Function GetArubaAuth {
-        <#
-            Returns an Aruba token id from a controller.
-            Note: This won't re-auth if a previously invoked cookie is newer than the CookieMaxAgeMins.
-        #>
-        param(
-    
-            #target controller
-            [ipaddress]
-            $ControllerIP = "10.185.11.220",
-    
-    
-            #Used to compare cookie age (or reuse in other calls if needed)
-            [Microsoft.PowerShell.Commands.WebRequestSession]
-            $session,
-    
-            #how many minutes is the cookie valid for. (Default = year)
-            [double]
-            $CookieMaxAgeMins = $(New-TimeSpan -Days 365 | select -expand TotalMinutes),
-
-            #User/pass that can auth to Aruba
-            [pscredential]
-            $account,
-    
-            #Ignore previously cached Cookies
-            [switch]
-            $force
-        )
-       
-    
-        #check for a previously non-expired cookie
-        if ($session) {
-
-            [array]$existingCookie = $session.Cookies.getAllCookies() | ? { $_.Domain -eq "$ControllerIP" }
-        
-            if ($existingCookie.count -eq 1 -and $force -ne $true) {
-        
-                $priorCookieIsValid = $existingCookie.TimeStamp.AddMinutes($CookieMaxAgeMins) -gt [datetime]::Now
-            
-                if ($priorCookieIsValid) {
-                
-                    write-host "Returning previously Cached Cookie"
-                    return $existingCookie.Value
-                }
-            }
-        }
-        
-        if (!$priorCookieIsValid) {
-            $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession # overwrite cookies with blank session
-        }
-    
-    
-        #Obtain a fresh auth id token from scratch.
-        write-host "Attempting to retrieve new Cookie"
-    
-        if (!$account) { [pscredential]$account = Get-Credential }
-
-        $AuthAccount = $account.username
-        $clearpw = $account.GetNetworkCredential().Password
-       
-        $params = @{
-            'uri'                  = "https://$($ControllerIP):4343/v1/api/login";
-            'Method'               = 'Post';
-            'SkipCertificateCheck' = $true;
-            #'Headers' = @{"aruba-cookie"=$null};
-            'Body'                 = "username=$AuthAccount&password=$clearpw";
-            'websession'           = $session;
-        }
-        $AuthResult = Invoke-RestMethod @params
-    
-        write-host "Got Aruba token: $($AuthResult.UIDARUBA)"
-        return $session
-    }
-
-    <#page paths
-        $PageDir = $PSScriptRoot
-        $cache:debugit = $PageDir
-        $dashPath = split-path $PageDir -Parent
-        $DashboardName = split-path $dashPath -Leaf 
-    #>
-
-}
-
-#------------------   
-
-if (!(Test-Path function:priv_loadSettings)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
-
-#hardcoded configFile
-
-# ensure slow-loading endpoint runs before we try to access stored paths
-if (!$cache:dashinfo.$DashboardName.dashPath) {
-
-    Show-UDToast -Duration 10 -Message "loading config file..."
-    $i = 0
-    while ($i -lt 10) {
-        $i++
-
-        sleep -Seconds 1
-    }
-    Hide-UDToast
-}
-
-$settingsFile = $cache:dashinfo.$DashboardName.dashPath + "\arubaSettings.json"
-#$settingsFile = $dashPath + "\arubaSettings.json"
-$settingsObj = priv_loadSettings -settingsFile $settingsFile
-$cache:dashinfo.$DashboardName.settingsObj.SettingsDb = $settingsFile
-
-
-
-#default to 365 if blank
-if (!$cache:dashinfo.$DashboardName.settingsObj.ReportRetentionDays) { $cache:dashinfo.$DashboardName.settingsObj.ReportRetentionDays = 365 }
-
 New-UDGrid -Container -Content {
 
     $layout = '{"lg":[{"w":11,"h":4,"x":0,"y":0,"i":"grid-element-expandsionPanelGroup1","moved":false,"static":false}]}'
     New-UDGridLayout -id "grid_layout" -layout $layout -Content { # add the '-design' flag to temporarily to obtain json layout
-            
+
         #New-UDButton -Text "debug" -OnClick { Debug-PSUDashboard }
 
 
@@ -288,7 +11,7 @@ New-UDGrid -Container -Content {
 
             New-UDExpansionPanel -Title "Aruba controller" -Id 'expansionPanel1' -Content {
 
-                new-udcard -id "controller.card" -Title "Controller" -Content { 
+                new-udcard -id "controller.card" -Title "Aruba Controller" -Content { 
 
                     New-UDForm -SubmitText Save -Content {
         
@@ -310,7 +33,7 @@ New-UDGrid -Container -Content {
         
                         $cache:dashinfo.$DashboardName.settingsObj.ControllerisForce = $EventData.ControllerisForce
         
-                        $SavedObj = priv_SaveSettingsFile -settingsFile $cache:dashinfo.$DashboardName.settingsObj.SettingsDb
+                        $SavedObj = priv_SaveSettingsFile -settingsFile $cache:dashinfo.$DashboardName.SettingsDb
                     }
         
                     New-UDPaper -Children {
@@ -318,19 +41,22 @@ New-UDGrid -Container -Content {
                         New-UDButton -Text "Connect" -OnClick {
             
                             if (!(Test-Path function:priv_SaveSettingsFile)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
-            
+           
                             $params = @{
-                                ControllerIP     = $cache:dashinfo.$DashboardName.settingsObj.ControllerIP;
-                                session          = $cache:dashinfo.$DashboardName.websession;
+                                ControllerNameIpPort     = $cache:dashinfo.$DashboardName.settingsObj.ControllerIP;
+                                session          = $cache:dashinfo.$DashboardName.ControllerWebsession;
                                 CookieMaxAgeMins = $(New-TimeSpan -Days 365 | select -expand TotalMinutes);
                                 account          = [pscredential]::new($cache:dashinfo.$DashboardName.settingsObj.ControllerUser, $cache:dashinfo.$DashboardName.settingsObj.ControllerPass)
                                 force            = $cache:dashinfo.$DashboardName.settingsObj.ControllerisForce;
                             }
-                            $cache:dashinfo.$DashboardName.websession = GetArubaAuth @params
+                            $cache:dashinfo.$DashboardName.ControllerWebsession = GetArubaControllerAuth @params
             
-                            $cache:dashinfo.$DashboardName.currentArubaID = $cache:dashinfo.$DashboardName.websession.Cookies.getAllCookies().value | select -first 1
+                            $domain = $cache:dashinfo.$DashboardName.settingsObj.ControllerIP -split ':' | select -first 1
+                            $currentArubaCookie = $cache:dashinfo.$DashboardName.ControllerWebsession.Cookies.getAllCookies() | ?{$_.domain -eq $domain} | select -first 1
+                            $cache:dashinfo.$DashboardName.currentArubaID = $currentArubaCookie.value
+                            
                             #Sync-UDElement -id currentArubaID
-                            Set-UDElement -Id "currentArubaID" -Properties @{value = $cache:dashinfo.$DashboardName.currentArubaID }
+                            Sync-UDElement -Id "currentArubaID" #-Properties @{value = $cache:dashinfo.$DashboardName.currentArubaID }
             
                         }
                         New-UDTextbox -Id 'currentArubaID' -Value $cache:dashinfo.$DashboardName.currentArubaID -Disabled -Placeholder "NONE" -FullWidth 
@@ -338,7 +64,7 @@ New-UDGrid -Container -Content {
         
                 }
 
-            } 
+            }
 
 
             New-UDExpansionPanel -Title "Aruba Airwave" -Content {
@@ -362,7 +88,7 @@ New-UDGrid -Container -Content {
                         
                         $cache:dashinfo.$DashboardName.settingsObj.AirwaveisForce = $EventData.AirwaveisForce
         
-                        $savedobj = priv_SaveSettingsFile -settingsFile $cache:dashinfo.$DashboardName.settingsObj.SettingsDb
+                        $savedobj = priv_SaveSettingsFile -settingsFile $cache:dashinfo.$DashboardName.SettingsDb
                     }
         
                     New-UDPaper -Children {
@@ -371,11 +97,23 @@ New-UDGrid -Container -Content {
             
                             if (!(Test-Path function:priv_SaveSettingsFile)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
                             
-                            #todo some IRM call here?
+                            $params = @{
+                                ControllerNameIpPort = $cache:dashinfo.$DashboardName.settingsObj.AirwaveIP;
+                                session          = $cache:dashinfo.$DashboardName.AirwaveWebsession;
+                                CookieMaxAgeMins = $(New-TimeSpan -Days 365 | select -expand TotalMinutes);
+                                account          = [pscredential]::new($cache:dashinfo.$DashboardName.settingsObj.AirwaveUser, $cache:dashinfo.$DashboardName.settingsObj.AirwavePass)
+                                force            = $cache:dashinfo.$DashboardName.settingsObj.AirwaveisForce;
+                            }
+                            $cache:dashinfo.$DashboardName.AirwaveWebsession = GetArubaAirwaveAuth @params
             
-                            $cache:dashinfo.$DashboardName.currentAirwaveID = $cache:dashinfo.$DashboardName.websession.Cookies.getAllCookies().value | select -first 1
+                            $domain = $cache:dashinfo.$DashboardName.settingsObj.ControllerIP -split ':' | select -first 1
+                            $currentArubaCookie = $cache:dashinfo.$DashboardName.AirwaveWebsession.Cookies.getAllCookies() | ?{$_.domain -eq $domain} | select -first 1
+                            $cache:dashinfo.$DashboardName.currentAirwaveID = $currentArubaCookie.value
+                            
                             #Sync-UDElement -id currentArubaID
-                            Set-UDElement -Id "currentAirwaveID" -Properties @{value = $cache:dashinfo.$DashboardName.currentAirwaveID }
+                            Sync-UDElement -Id "currentAirwaveID" #-Properties @{value = $cache:dashinfo.$DashboardName.currentArubaID }
+
+
             
                         }
                         New-UDTextbox -Id 'currentAirwaveID' -Value $cache:dashinfo.$DashboardName.currentAirwaveID -Disabled -Placeholder "NONE" -FullWidth 
@@ -392,15 +130,15 @@ New-UDGrid -Container -Content {
 
                         New-UDTextbox -FullWidth -id 'ReportsDirectory' -label 'ReportsDirectory' -icon (New-UDIcon -Icon Database) -value $cache:dashinfo.$DashboardName.settingsObj.ReportsDirectory -placeholder 'c:\path\to\CSV\Dir | \\unc\path\to\CSV\Dir'
                         New-UDTextbox -FullWidth -id 'ReportRetentionDays' -label 'ReportRetentionDays' -icon (New-UDIcon -Icon Database) -value $cache:dashinfo.$DashboardName.settingsObj.ReportRetentionDays -placeholder '365'
-                        New-UDTextbox -FullWidth -id 'SettingsDb' -label 'Settings Db' -icon (New-UDIcon -Icon Database) -value $cache:dashinfo.$DashboardName.settingsObj.SettingsDb -placeholder '\\unc\path\to\shared.json' -Disabled
+                        New-UDTextbox -FullWidth -id 'SettingsDb' -label 'Settings Db' -icon (New-UDIcon -Icon Database) -value $cache:dashinfo.$DashboardName.SettingsDb -placeholder '\\unc\path\to\shared.json' -Disabled
                     } -OnSubmit {
 
                         if (!(Test-Path function:priv_SaveSettingsFile)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
 
                         $cache:dashinfo.$DashboardName.settingsObj.ReportsDirectory = $EventData.ReportsDirectory
-                        #$cache:dashinfo.$DashboardName.settingsObj.SettingsDb = $EventData.SettingsDb
+                        #$cache:dashinfo.$DashboardName.SettingsDb = $EventData.SettingsDb
                 
-                        priv_SaveSettingsFile -settingsFile $cache:dashinfo.$DashboardName.settingsObj.SettingsDb
+                        priv_SaveSettingsFile -settingsFile $cache:dashinfo.$DashboardName.SettingsDb
                     }
 
                 } 
