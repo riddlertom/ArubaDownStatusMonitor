@@ -69,25 +69,25 @@ if (!(dir -ea 0 -LiteralPath "$thisPath\ArubaDownStatusMonitor")) { Write-Error 
     $dashboardsFile1 = "$baseProgramsPath\UniversalAutomation\Repository\dashboards.ps1"
     if(!(test-path $dashboardsFile -ea 0)){'' > $dashboardsFile}
 
-    $dashboardsFile2 = "$baseProgramsPath\UniversalAutomation\Repository\dashboards.ps1"
+    $dashboardsFile2 = "$baseProgramsPath\UniversalAutomation\Repository\.universal\dashboards.ps1"
     if(!(test-path $dashboardsFile2 -ea 0)){'' > $dashboardsFile2}
     #Write-Error "Unable to find expected file at: $dashboardPath"; pause; return; exit;}
 
     #---------------------------
 
     # enable dash
-    $dashInstalled = gc $dashboardsFile1 | ?{$_ -like "*dashboards\ArubaDownStatusMonitor\ArubaDownStatusMonitor.ps1*"}
-    if(!$dashInstalled){'New-PSUApp -Name "ArubaDownStatusMonitor" -FilePath "dashboards\ArubaDownStatusMonitor\ArubaDownStatusMonitor.ps1" -BaseUrl "/ArubaMonitor" -Authenticated -AutoDeploy' >> $dashboardsFile1}else{write-host "Found installed dashboard at: $dashboardsFile1"}
+    #$dashInstalled = gc $dashboardsFile1 | ?{$_ -like "*dashboards\ArubaDownStatusMonitor\ArubaDownStatusMonitor.ps1*"}
+    #if(!$dashInstalled){'New-PSUApp -Name "ArubaDownStatusMonitor" -FilePath "dashboards\ArubaDownStatusMonitor\ArubaDownStatusMonitor.ps1" -BaseUrl "/ArubaMonitor" -Authenticated -AutoDeploy' >> $dashboardsFile1}else{write-host "Found installed dashboard at: $dashboardsFile1"}
 
     $dashInstalled2 = gc $dashboardsFile2 | ?{$_ -like "*dashboards\ArubaDownStatusMonitor\ArubaDownStatusMonitor.ps1*"}
     if(!$dashInstalled2){'New-PSUApp -Name "ArubaDownStatusMonitor" -FilePath "dashboards\ArubaDownStatusMonitor\ArubaDownStatusMonitor.ps1" -BaseUrl "/ArubaMonitor" -Authenticated -AutoDeploy' >> $dashboardsFile2}else{write-host "Found installed dashboard at: $dashboardsFile2"}
 
 
-    $dashboardAppDir = "$dashboardPath\dashboards"
+    $dashboardAppDir = "$dashboardPath"
     if(!(test-path $dashboardAppDir -ea 0)){Write-Error "Unable to find expected path: $dashboardAppDir"; pause; return; exit;}
     copy-item -Verbose -Recurse -LiteralPath $dashpath -Destination $dashboardAppDir -Force
     
-    if(!$dashInstalled){restart-service -Name PowerShellUniversal -Verbose }
+    if(!$dashInstalled){Stop-Service -Name PowerShellUniversal -Verbose -PassThru | Start-Service -Verbose}
 
     Write-Host "Setup finished: navigate to http://localhost:5000/ArubaMonitor"
 
