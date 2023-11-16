@@ -156,7 +156,7 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
       
         if ($propertyValue -ne $null) {
 
-            $encStr = $propertyValue | ConvertTo-SecureString -AsPlainText -Force |  ConvertFrom-SecureString -key -key $cache:dashinfo.$DashboardName.Key                
+            $encStr = $propertyValue | ConvertTo-SecureString -AsPlainText -Force |  ConvertFrom-SecureString -key $cache:dashinfo.$DashboardName.Key                
             $SecurStrObj = ($encStr | ConvertTo-SecureString -Key $cache:dashinfo.$DashboardName.Key)
             $cache:dashinfo.$DashboardName.settingsObj.$propertyName = $SecurStrObj
         }
