@@ -1,7 +1,6 @@
 #Requires -RunAsAdministrator 
-#Requires -Version 7
+#Requires -Version 5.1
 
-#todo does not support windows 5.1 powerhsell
 
 #helper script to setup web tooling
 
@@ -50,7 +49,7 @@ if (!(dir -ea 0 -LiteralPath "$thisPath\ArubaDownStatusMonitor")) { Write-Error 
     
     #$service = get-service -Name PowerShellUniversal #!$service.BinaryPathName
     $process = ps -Name Universal.Server | select -First 1
-    if ( !$service -or !$process.Path) { Write-Error "Missing Powershell Universal service info"; pause; return; exit }
+    if ( !$process -or !$process.Path) { Write-Error "Missing Powershell Universal service info"; pause; return; exit }
     $match = [regex]::Match($process.Path,'^.*PowerShellUniversal')
     if(!$match){}
 
@@ -68,8 +67,8 @@ if (!(dir -ea 0 -LiteralPath "$thisPath\ArubaDownStatusMonitor")) { Write-Error 
     if(!(test-path $unidotpath -ea 0)){mkdir $unidotpath -force -verbose}
     
 
-    $dashboardsFile1 = "$baseProgramsPath\UniversalAutomation\Repository\dashboards.ps1"
-    if(!(test-path $dashboardsFile -ea 0)){'' > $dashboardsFile}
+    #$dashboardsFile1 = "$baseProgramsPath\UniversalAutomation\Repository\dashboards.ps1"
+    #if(!(test-path $dashboardsFile -ea 0)){'' > $dashboardsFile}
 
     $dashboardsFile2 = "$baseProgramsPath\UniversalAutomation\Repository\.universal\dashboards.ps1"
     if(!(test-path $dashboardsFile2 -ea 0)){'' > $dashboardsFile2}
