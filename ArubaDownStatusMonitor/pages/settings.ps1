@@ -4,7 +4,7 @@ New-UDGrid -Container -Content {
     $layout = '{"lg":[{"w":11,"h":4,"x":0,"y":0,"i":"grid-element-expandsionPanelGroup1","moved":false,"static":false}]}'
     New-UDGridLayout -id "grid_layout" -layout $layout -Content { # add the '-design' flag to temporarily to obtain json layout
 
-        #New-UDButton -Text "debug" -OnClick { Debug-PSUDashboard }
+        New-UDButton -Text "debug" -OnClick { Debug-PSUDashboard }
 
 
         New-UDExpansionPanelGroup -Id 'expandsionPanelGroup1' -Children {
@@ -56,7 +56,7 @@ New-UDGrid -Container -Content {
                             $cache:dashinfo.$DashboardName.currentArubaID = $currentArubaCookie.value
                             
                             #Sync-UDElement -id currentArubaID
-                            Sync-UDElement -Id "currentArubaID" #-Properties @{value = $cache:dashinfo.$DashboardName.currentArubaID }
+                            set-UDElement -Id "currentArubaID" -Properties @{value = $cache:dashinfo.$DashboardName.currentArubaID }
             
                         }
                         New-UDTextbox -Id 'currentArubaID' -Value $cache:dashinfo.$DashboardName.currentArubaID -Disabled -Placeholder "NONE" -FullWidth 
@@ -97,21 +97,21 @@ New-UDGrid -Container -Content {
             
                             if (!(Test-Path function:priv_SaveSettingsFile)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
                             
-                            $params = @{
-                                ControllerNameIpPort = $cache:dashinfo.$DashboardName.settingsObj.AirwaveIP;
+                            $params1 = @{
+                                airwaveNameIPPort = $cache:dashinfo.$DashboardName.settingsObj.AirwaveIP;
                                 session          = $cache:dashinfo.$DashboardName.AirwaveWebsession;
                                 CookieMaxAgeMins = $(New-TimeSpan -Days 365 | select -expand TotalMinutes);
                                 account          = [pscredential]::new($cache:dashinfo.$DashboardName.settingsObj.AirwaveUser, $cache:dashinfo.$DashboardName.settingsObj.AirwavePass)
                                 force            = $cache:dashinfo.$DashboardName.settingsObj.AirwaveisForce;
                             }
-                            $cache:dashinfo.$DashboardName.AirwaveWebsession = GetArubaAirwaveAuth @params
+                            $cache:dashinfo.$DashboardName.AirwaveWebsession = GetArubaAirwaveAuth @params1 #debug with: $params1.Keys | %{Set-Variable -Name $_ -Value $params1.$_} 
             
-                            $domain = $cache:dashinfo.$DashboardName.settingsObj.ControllerIP -split ':' | select -first 1
+                            $domain = $cache:dashinfo.$DashboardName.settingsObj.airwaveIP -split ':' | select -first 1
                             $currentArubaCookie = $cache:dashinfo.$DashboardName.AirwaveWebsession.Cookies.getAllCookies() | ?{$_.domain -eq $domain} | select -first 1
                             $cache:dashinfo.$DashboardName.currentAirwaveID = $currentArubaCookie.value
                             
                             #Sync-UDElement -id currentArubaID
-                            Sync-UDElement -Id "currentAirwaveID" #-Properties @{value = $cache:dashinfo.$DashboardName.currentArubaID }
+                            set-UDElement -Id "currentAirwaveID" -Properties @{value = $cache:dashinfo.$DashboardName.currentAirwaveID }
 
 
             

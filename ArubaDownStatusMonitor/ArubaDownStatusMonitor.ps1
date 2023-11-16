@@ -36,7 +36,7 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
                 # encode pass strings to not be clear text
                 if ($settingsObj.$settingsId -ne $null) {
                     
-                    $encStr = $settingsObj.$settingsId | ConvertFrom-SecureString $cache:dashinfo.$DashboardName.Key
+                    $encStr = $settingsObj.$settingsId | ConvertFrom-SecureString -key $cache:dashinfo.$DashboardName.Key
                     $settingsObj_persist.$settingsId = $encStr
                 }
                 else {
@@ -156,8 +156,8 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
       
         if ($propertyValue -ne $null) {
 
-            $encStr = $propertyValue | ConvertTo-SecureString -AsPlainText -Force |  ConvertFrom-SecureString $cache:dashinfo.$DashboardName.Key                
-            $SecurStrObj = ($encStr | ConvertTo-SecureString $cache:dashinfo.$DashboardName.Key)
+            $encStr = $propertyValue | ConvertTo-SecureString -AsPlainText -Force |  ConvertFrom-SecureString -key -key $cache:dashinfo.$DashboardName.Key                
+            $SecurStrObj = ($encStr | ConvertTo-SecureString -Key $cache:dashinfo.$DashboardName.Key)
             $cache:dashinfo.$DashboardName.settingsObj.$propertyName = $SecurStrObj
         }
         else {
@@ -212,7 +212,10 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
             #how many minutes is the cookie valid for. (Default = year)
             [double]
             $CookieMaxAgeMins = $(New-TimeSpan -Days 365 | select -expand TotalMinutes),
-    
+            
+
+            $account,
+
             #Ignore previously cached Cookies
             [switch]
             $force
@@ -222,11 +225,11 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
         $domain = $airwaveNameIPPort -split ':' | select -First 1
     
         #check for a previously non-expired cookie
-        if ($session) {
+        if ($session -and $force -ne $true) {
            
             [array]$existingCookie = $session.Cookies.getAllCookies() | ? { $_.Domain -eq $domain }
     
-            if ($existingCookie.count -eq 1 -and $force -ne $true) {
+            if ($existingCookie.count -eq 1 ) {
     
                 $priorCookieIsValid = $existingCookie.TimeStamp.AddMinutes($CookieMaxAgeMins) -gt [datetime]::Now
                
@@ -237,18 +240,18 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
                 }
             }
         }
+        else {
+            #Obtain a fresh auth id token from scratch.
+            write-host "Attempting to retrieve new Cookie"
+            $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession # overwrite cookies with blank session
+        }
     
     
-        #Obtain a fresh auth id token from scratch.
-        write-host "Attempting to retrieve new Cookie"
-    
-        [pscredential]$account = Get-Credential
-        $AuthAccount = $account.username
-        $clearpw = $account.GetNetworkCredential().Password
+        if (!$account) { [pscredential]$account = Get-Credential }
+
+        $creds = $account
+        $passw = $account.GetNetworkCredential().Password
        
-    
-        $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession # overwrite cookies with blank session
-    
         #setup body params
         $body = @{
             "credential_0" = $creds.UserName;
@@ -256,16 +259,19 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
             "destination"  = '/index.html'; # '/'; # was also seen in examples
             #'login'="Log In"; # was also seen in examples
         }
-            
+        
         # setup args for irm call
         $params = @{
-            'uri'                  = "https://$($airwaveNameIPPort)/LOGIN'";
+            'uri'                  = "https://$($airwaveNameIPPort)/LOGIN"; #"https://$($domain)/LOGIN"; #
             'Method'               = 'Post';
             'SkipCertificateCheck' = $true;
             'Body'                 = $body;
             'websession'           = $session;
             'ContentType'          = 'application/x-www-form-urlencoded;charset=UTF-8';
+
         }
+        
+    
         $AuthResult = Invoke-RestMethod @params
        
         return $session

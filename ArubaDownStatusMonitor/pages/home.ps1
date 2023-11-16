@@ -1,7 +1,7 @@
 ﻿New-UDPage -Url "/home" -Name "home" -Content {
 $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
 
-    Function GenerateNodeDownStats{
+    Function GenerateNodeDownStats {
         param()
 
         Show-UDToast -Message "GenerateNodeDownStats Not Implemented"
@@ -15,9 +15,10 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
         # this should be stashed as an SB that could be updated by user vs hard coded here
         $sbstr = '$cache:dashinfo.$DashboardName.GetAPIdataSB_{0}' -f $recordType
 
-        $Sb = iex $sbstr
+        
 
-        $Sb.invoke()
+        $Sb = iex $sbstr 
+        $Sb.invoke() #icm
     }
 
     Function saveToDb {
@@ -408,11 +409,11 @@ $cache:dashinfo.$DashboardName.HomeFunctionsSB = {
 $cache:dashinfo.$DashboardName.GetAPIdataSB_airwaveReport = {
 
     if (!(Test-Path function:priv_SaveSettingsFile)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
+    if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString()}
               
-
-    if (!$cache:dashinfo.$DashboardName.currentAirwaveID) {
+    if ($cache:dashinfo.$DashboardName.settingsObj.AirwaveisForce -and $false) {
         $params = @{
-            ControllerNameIpPort = $cache:dashinfo.$DashboardName.settingsObj.AirwaveIP;
+            airwaveNameIPPort = $cache:dashinfo.$DashboardName.settingsObj.AirwaveIP;
             session              = $cache:dashinfo.$DashboardName.AirwaveWebsession;
             CookieMaxAgeMins     = $(New-TimeSpan -Days 365 | select -expand TotalMinutes);
             account              = [pscredential]::new($cache:dashinfo.$DashboardName.settingsObj.AirwaveUser, $cache:dashinfo.$DashboardName.settingsObj.AirwavePass)
@@ -421,12 +422,11 @@ $cache:dashinfo.$DashboardName.GetAPIdataSB_airwaveReport = {
         $cache:dashinfo.$DashboardName.AirwaveWebsession = GetArubaAirwaveAuth @params
     }
 
-    $currentAirwaveID = $cache:dashinfo.$DashboardName.currentAirwaveID
-    if (!$currentAirwaveID) { Write-Error "Unable to obtain token currentAirwaveID"; return }
+    if (!$cache:dashinfo.$DashboardName.AirwaveWebsession) { Write-Error "Unable to obtain token AirwaveWebsession"; return }
 
     #---------------------
 
-    $res2 = Invoke-RestMethod -uri 'https://$($cache:dashinfo.$DashboardName.settingsObj.AirwaveIP)/latest_report.xml?id=44754' -websession $cache:dashinfo.$DashboardName.AirwaveWebsession
+    $res2 = Invoke-RestMethod -uri "https://$($cache:dashinfo.$DashboardName.settingsObj.AirwaveIP)/latest_report.xml?id=44754" -websession $cache:dashinfo.$DashboardName.AirwaveWebsession -SkipCertificateCheck
     $allrows = $res2.report.pickled_ap_uptime | ? { $_.'icmp_up_down_count' -ne 0 }
     <#
         Device,Group,Folder,"Device Uptime","Device Uptime is Reliable","Time Since Last Contact","Time Since Last Boot","SNMP Comm Uptime","SNMP Comm Up/Down Times","ICMP Comm Uptime","ICMP Comm Up/Down Times","HTTPS Comm Uptime","HTTPS Comm Up/Down Times"
@@ -440,13 +440,23 @@ $cache:dashinfo.$DashboardName.GetAPIdataSB_airwaveReport = {
         oma3-1-wlc01-2,"Controllers - North America","Top > Controllers - North America > Controllers - oma2",0.00%,No,"9 days 19 hrs 33 mins 33 secs","Device Down",0.00%,0,100.00%,0,-,-
     
         #>
+    
+    emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'airwaveReport' -allrows $allrows #$page:ArubaControllerAPDatabase
 
-    Clear-UDElement -id 'airwaveReport.div'
+    
+    #Clear-UDElement -id 'airwaveReport.div'
+    
+    
+    #<#
+
+    $cache:GetAPIdataSB_airwaveReport_rows = $allrows
+
     set-udelement -id 'airwaveReport.div' -content {
-        if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
-        emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'airwaveReport' -allrows $allrows #$page:ArubaControllerAPDatabase
+        if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB}
+        emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'airwaveReport' -allrows $cache:GetAPIdataSB_airwaveReport_rows #$page:ArubaControllerAPDatabase
     }
-
+    #>
+    
 }
 
 $cache:dashinfo.$DashboardName.GetAPIdataSB_ArubaControllerAPDatabase = {
@@ -455,9 +465,7 @@ $cache:dashinfo.$DashboardName.GetAPIdataSB_ArubaControllerAPDatabase = {
     if (!(Test-Path function:priv_loadSettings)) { iex $cache:dashinfo.$DashboardName.settingsFunctionsSB.ToString() }
     if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
     
-
-    if (!$cache:dashinfo.$DashboardName.currentArubaID) {
-
+    try {
         $params = @{
             ControllerNameIpPort = $cache:dashinfo.$DashboardName.settingsObj.ControllerIP;
             session              = $cache:dashinfo.$DashboardName.ControllerWebsession;
@@ -466,13 +474,19 @@ $cache:dashinfo.$DashboardName.GetAPIdataSB_ArubaControllerAPDatabase = {
             force                = $cache:dashinfo.$DashboardName.settingsObj.ControllerisForce;
         }
         $cache:dashinfo.$DashboardName.ControllerWebsession = GetArubaControllerAuth @params
+        $domain = $cache:dashinfo.$DashboardName.settingsObj.ControllerIP -split ':' | select -first 1
+        $currentArubaCookie = $cache:dashinfo.$DashboardName.ControllerWebsession.Cookies.getAllCookies() | ? { $_.domain -eq $domain } | select -first 1
+        $cache:dashinfo.$DashboardName.currentArubaID = $currentArubaCookie.value
     }
+    catch { write-error $_ }
 
     $arubaId = $cache:dashinfo.$DashboardName.currentArubaID
-    if (!$arubaId) { Write-Error "Unable to obtain token"; return }
-    
+    if (!$arubaId -or $cache:dashinfo.$DashboardName.ControllerWebsession) { Write-Error "Unable to obtain token/websession object(s)"; return }
 
-    $control = invoke-RestMethod -uri "https://$($params.ControllerNameIpPort)/v1/configuration/showcommand?command=show+ap+database&UIDARUBA=$arubaId" -SkipCertificateCheck #-WebSession $session
+
+    $uri = "https://$($cache:dashinfo.$DashboardName.settingsObj.ControllerIP)/v1/configuration/showcommand?command=show+ap+database&UIDARUBA=$arubaId" 
+
+    $control = invoke-RestMethod -uri $uri -SkipCertificateCheck -WebSession $cache:dashinfo.$DashboardName.ControllerWebsession
     $allrows = $control.'AP Database' # TODO: VERIFY we don't need this: #| Where-Object { $_.folder -notlike "*Controllers*" } | Select-Object -ExpandProperty Device
 
     Clear-UDElement -id 'ArubaControllerAPDatabase.div'
@@ -649,7 +663,13 @@ New-UDRow -Id "mainrow" -Columns {
                                 new-udelement -tag div -id 'airwaveReport.div' -Endpoint {
 
                                     if (!(Test-Path function:newRecordPath)) { iex $cache:dashinfo.$DashboardName.HomeFunctionsSB.ToString() }
-                                    emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'airwaveReport'
+                                    
+                                    if($cache:GetAPIdataSB_airwaveReport_rows){
+                                        emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'airwaveReport'
+                                    }else{
+                                        emitDaysRecordsGrid -selectedDay $session:selectedDay -recordType 'airwaveReport' -allrows $cache:GetAPIdataSB_airwaveReport_rows
+
+                                    }
                                 }
                             }
 
