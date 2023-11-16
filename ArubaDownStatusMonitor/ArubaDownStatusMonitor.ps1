@@ -334,11 +334,11 @@ $cache:dashinfo.$DashboardName.settingsFunctionsSB = {
                     return $session
                 }
             }
+        }else{
+        
+        
+            $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession # overwrite cookies with blank session
         }
-        
-        
-        $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession # overwrite cookies with blank session
-        
     
     
         #Obtain a fresh auth id token from scratch.
