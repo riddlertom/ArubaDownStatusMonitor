@@ -47,9 +47,11 @@ if (!(dir -ea 0 -LiteralPath "$thisPath\ArubaDownStatusMonitor")) { Write-Error 
 #region: copy/enable dashboard
 
     #find paths
-    $service = get-service -Name PowerShellUniversal
-    if ( !$service -or !$service.BinaryPathName) { Write-Error "Missing Powershell Universal service info"; pause; return; exit }
-    $match = [regex]::Match($service.BinaryPathName,'^.*PowerShellUniversal')
+    
+    #$service = get-service -Name PowerShellUniversal #!$service.BinaryPathName
+    $process = ps -Name Universal.Server | select -First 1
+    if ( !$service -or !$process.Path) { Write-Error "Missing Powershell Universal service info"; pause; return; exit }
+    $match = [regex]::Match($process.Path,'^.*PowerShellUniversal')
     if(!$match){}
 
     $baseProgramsPath0 = $match.Value | select -first 1
